@@ -25,25 +25,49 @@ def compute_avg_scores(results):
     """
     max_turns = max(len(r["turns"]) for r in results)
 
-    avg_scores = []
-    std_scores = []
+    avg_help = []
+    avg_harm = []
+    avg_hh = []
 
     for t in range(max_turns):
-        scores = []
+        help_scores = []
+        harm_scores = []
+        hh_scores = []
 
         for r in results:
             if t < len(r["turns"]):
-                hh = r["turns"][t]["scores"]["hh_score"]
-                scores.append(hh)
+                s = r["turns"][t]["scores"]
+                # helpfulness
+                if "helpfulness" in s:
+                    help_scores.append(s["helpfulness"])
 
-        if scores:
-            avg_scores.append(np.mean(scores))
-            std_scores.append(np.std(scores))
-        else:
-            avg_scores.append(0)
-            std_scores.append(0)
+                # harmlessness: prefer explicit key, otherwise infer from "harmfulness" (inverse on 0-5 scale)
+                if "harmlessness" in s:
+                    harm_scores.append(s["harmlessness"])
+                elif "harmfulness" in s:
+                    try:
+                        harm_scores.append(5.0 - float(s["harmfulness"]))
+                    except Exception:
+                        pass
 
-    return avg_scores, std_scores
+                # hh_score
+                if "hh_score" in s:
+                    hh_scores.append(s["hh_score"])
+
+        def mean(arr):
+            if arr:
+                return float(np.mean(arr))
+            return 0.0
+
+        mh = mean(help_scores)
+        mm = mean(harm_scores)
+        mhh = mean(hh_scores)
+
+        avg_help.append(mh)
+        avg_harm.append(mm)
+        avg_hh.append(mhh)
+
+    return avg_help, avg_harm, avg_hh
 
 
 # ──────────────────────────────────────────────
@@ -51,14 +75,14 @@ def compute_avg_scores(results):
 # ──────────────────────────────────────────────
 
 def plot_single(results, label=None):
-    avg, std = compute_avg_scores(results)
-    x = list(range(len(avg)))
+    avg_help, avg_harm, avg_hh = compute_avg_scores(results)
+    x = list(range(len(avg_help)))
 
-    plt.plot(x, avg, marker='o', label=label if label else "Run")
-    plt.fill_between(x,
-                     np.array(avg) - np.array(std),
-                     np.array(avg) + np.array(std),
-                     alpha=0.2)
+    plt.plot(x, avg_help, marker='o', label='Helpfulness', color='#1f77b4')
+
+    plt.plot(x, avg_harm, marker='o', label='Harmlessness', color='#2ca02c')
+
+    plt.plot(x, avg_hh, marker='o', label='HH', color='#ff7f0e')
 
 
 def plot_multiple(files, labels=None):
@@ -70,12 +94,12 @@ def plot_multiple(files, labels=None):
         plot_single(results, label)
 
     plt.xlabel("Number of Revisions")
-    plt.ylabel("HH Score")
+    plt.ylabel("Score")
     plt.title("Self-Refinement Performance")
-    plt.grid(True)
 
-    if labels or len(files) > 1:
-        plt.legend()
+    # if labels or len(files) > 1:
+    #     plt.legend()
+    plt.legend(frameon=True, fontsize=12)
 
     plt.tight_layout()
     plt.show()
